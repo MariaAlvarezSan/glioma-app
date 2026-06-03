@@ -1,0 +1,304 @@
+---
+title: "PEC2"
+author: "María Álvarez Sánchez"
+date: "2026-02-10"
+output:
+  html_document: 
+    toc: true
+    toc_float: true
+  pdf_document: 
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+```{r}
+# Cargamos librerías
+library(tidyverse) # EDA
+library(rsample) # split
+```
+
+
+```{r}
+# Cargamos los datos
+data <- read.csv("TCGA_InfoWithGrade.csv",header=TRUE)
+```
+
+# 1. Exploración y limpieza de los datos
+```{r}
+str(data) # Estructura de los datos
+```
+
+
+```{r}
+sum(is.na(data)) # Valores nulos
+sum(duplicated(data)) # Valores duplicados
+```
+
+```{r}
+# eliminamos dupliucados
+data <- data[!duplicated(data), ]
+```
+
+
+```{r}
+sum(duplicated(data)) 
+```
+
+Se detectó la presencia de un registro duplicado en el conjunto de datos, el cual fue eliminado para evitar errores en el análisis posterior.
+
+
+```{r}
+# Ajustes importantes sobre las variables categóricas cualitativas
+data$Gender <- as.factor(data$Gender)
+data$Race   <- as.factor(data$Race)
+data$Grade  <- as.factor(data$Grade)
+data[, 5:24] <- lapply(data[, 5:24], as.factor)
+```
+
+
+```{r}
+summary(data) # Resumen de los datos
+colnames(data) # Nombre de las variables
+```
+
+
+
+# 2. División de los datos
+```{r}
+set.seed(123) # reproducibilidad
+split_data <- initial_split(data, prop = 0.8, strata = Grade)
+```
+
+
+```{r}
+train_data <- training(split_data) # Conjunto de entrenamiento (para EDA)
+```
+
+```{r}
+test_data <- testing(split_data) # Conjunto prueba (para el final del modelo)
+```
+
+
+# 3. Análisis Exploratorio de Datos aplicado al conjunto de entrenamiento (train dataset).
+
+Las variables categóricas se analizarán manteniendo sus valores originales pero se han convertido a factor para que R las interprete correctamente como categóricas. Esto nos permite mantener la estructura original del dataset y realizar un análisis descriptivo adecuado sin alterar los datos originales.
+
+- **Grade**: 0 = LGG, 1 = GBM
+- **Gender**: 0 = Male, 1 = Female
+- **Race**: 0 = White, 1 = Black, 2 = Asian, 3 = Other
+
+
+## 3.1 Variable objetivo (Grade)    
+
+```{r}
+table(train_data$Grade) # Miramos la cantidad real de la variable Grade
+```
+
+Se observa que la variable Grade presenta 388 casos de LGG y 281 casos de GBM.
+
+```{r}
+round(prop.table(table(train_data$Grade))*100, 2) # Proporción de la variable Grade
+```
+
+Al calcular las proporciones, obtenemos que el 58% de los casos corresponde a LGG y el 42% a GBM. Esta distribución indica que hay más casos de LGG que de GBM, mostrando un balance relativamente aceptable entre ambas clases. 
+
+
+## 3.2 Variables cínicas
+### 3.2.1 Age (edad)
+```{r}
+summary(train_data$Age_at_diagnosis)
+```
+
+La edad de diágnostico presenta una distribución centrada en torno a los 50 años, con la mayoría de los pacientes entre los 38 y 63 años.
+
+```{r}
+hist(train_data$Age_at_diagnosis,
+     freq = FALSE,
+     main = "Distribución de la edad al diagnóstico",
+     xlab = "Edad",
+     ylab = "Frecuencia",
+     col = "lightblue",
+     las = 1)
+```
+
+El histograma muestra la distribución de la edad de diagnóstico, con mayor concentración del número de casos entre las personas de 40 a 65 años. 
+
+La distribución es bastante simétrica, y se observa que la mayor frecuencia se sitúa alrededor de los 50 y 60 años.  Hay pocos los casos entre los más jóvenes (menores de 20 años) y las personas mayores (mayores de 80 años).
+
+```{r}
+boxplot(train_data$Age_at_diagnosis,
+        main = "Distribución de la edad al diagnóstico",
+        ylab = "Edad",
+        col = "lightblue")
+```
+
+El boxplot muestra que la edad de diagnóstico se distribuye entre aproximadamente 15 y 80 años, con mediana cercana a 50 años. No se observan valores atípicos extremos, y la distribución parece relativamente simétrica. Estos resultados concuerdan con los obtenido previamente mediante el análisis descriptivo (summary) y el histograma.
+
+### 3.2.2 Gender (sexo)
+```{r}
+table(train_data$Gender)
+```
+
+Para la variable Gender, se observan 392 individuos de sexo masculino y 277 individuos de sexo femenino. 
+
+
+```{r}
+round(prop.table(table(train_data$Gender))*100, 2)
+```
+
+
+Al calcular las proporciones, se obtiene que el 58.59% de la muestra corresponde a Male y el 41.41% a Female. 
+Esto indica que la muestra está distribuida de manera similar a la variable Grade, con una ligera predominancia de la categoría 0.
+
+
+### 3.2.3 Race (raza)
+```{r}
+table(train_data$Race)
+round(prop.table(table(train_data$Race))*100, 2)
+```
+
+Del total de 838 pacientes, 610 (91.18%) son White, 49 (7.32%) son Black, 9 (1.35%) son Asian y 1 (0.15%) es Other.Debido a que la mayoría de los pacientes son White, los resultados del análisis podrían estar influenciados por esta predominancia y podrían no ser totalmente representativos para los grupos minoritarios.
+
+
+## 3.3 Variables moleculares basadas en mutaciones
+```{r}
+# Seleccionamos las mutaciones
+mutation_cols <- colnames(train_data)[5:24]
+```
+
+
+```{r}
+# Cálculamos la frecuencia de mutación y orden de los genes de mayor a menor frecuencia
+mutation_freq <- colMeans(train_data[, mutation_cols] == "1")
+mutation_freq <- sort(mutation_freq, decreasing = TRUE)
+print(round(mutation_freq, 4))
+
+```
+
+Se calculó la frecuencia de mutación de cada gen, lo que permitió identificar los de mayor prevalencia en el conjunto de datos. Destacan entre ellos IDH1, TP53 y ATRX.
+
+```{r}
+barplot(mutation_freq,
+        las = 2,
+        main = "Distribución de la frecuencia de mutacion de los genes estudiados",
+        ylab = "Proporción",
+        col = "lightblue")
+```
+
+Se representa la frecuencia de mutación para cada uno de los genes analizados mediante un diagrama de barras (barplot), dado que permite comparar de manera visual y ordenada cuáles son los más prevalentes. Este tipo de gráfico facilita la identificación de los genes con mayor frecuencia de mutación, como IDH1, TP53 y ATRX.
+
+
+```{r}
+genes <- names(mutation_freq)
+
+
+for (g in genes) {
+  cat("\nGen:", g, "\n")
+  
+  tabla <- prop.table(table(train_data[[g]],  train_data$Grade), margin = 2) #Frecuencia de mutación y proporción
+  
+  colnames(tabla) <- c("LGG", "GBM")
+  rownames(tabla) <- c("Not mutated", "Mutated")
+  
+  print(round(tabla, 4))
+}
+```
+
+Se analizó la proporción de mutación de cada gen en función del tipo de tumor (LGG y GBM).
+
+Se observa que el gen IDH1 presenta una frecuencia de mutación considerablemente mayor en LGG (77.58%) que en GBM (6.41%), lo que sugiere una fuerte asociación de este gen con tumores de bajo grado.
+
+En el caso de TP53, la mutación es más frecuente en LGG (49.23%) que en GBM (31.32%), aunque la diferencia es menos marcada que en IDH1.
+
+De forma muy similar, ATRX también muestra una mayor proporción de mutación en LGG (35.82%) en comparación con GBM (9.61%).
+
+Por el contrario, algunos genes como PTEN y EGFR presentan una mayor frecuencia de mutación en GBM (32.74% y 23.84%, respectivamente) que en LGG, lo que sugiere una posible asociación con tumores de alto grado.
+
+En general, se observa que ciertos genes (IDH1, TP53 y ATRX) están más asociados a LGG, mientras que otros (PTEN y EGFR) son más frecuentes en GBM.
+
+Estos resultados sugieren la existencia de perfiles moleculares diferenciados entre LGG y GBM, lo que podría tener implicaciones en el diagnóstico y la clasificación de los tumores.
+
+
+
+## 3.4 Relaciones
+### 3.4.1 Mutaciones mas frecuentes vs grado
+```{r}
+# Seleccionamos los genes más impotantes 
+important_genes <- c("IDH1","TP53","ATRX","PTEN","EGFR")
+```
+
+
+```{r}
+# Hacer un bucle para recorrer cada gen importante
+for (g in important_genes) {
+  
+  # Calcular la proporción de mutación según el grado tumoral 
+  tabla <- prop.table(table(train_data[[g]], train_data$Grade), margin = 2)
+  
+  # Crear el data frame para hacer ggplot
+  df_tabla <- as.data.frame(tabla)
+  
+  # Renombrar las columnas de la tabla
+  colnames(df_tabla) <- c("Mutation", "Grade", "Proportion")
+  
+  # Convertir la variable grado a factor con etiquetas
+  df_tabla$Grade <- factor(df_tabla$Grade,  
+  levels = c(0, 1), 
+  labels = c("LGG", "GBM")) 
+  
+  # Convertir la variable Mutation a factor con etiquetas mutado y no mutado
+  df_tabla$Mutation <- factor(df_tabla$Mutation,
+  levels = c(0, 1),
+  labels = c("Not Mutated", "Mutated"))
+  
+  # Hacer un ggplot para mostrar de forma visual nuestros datos
+  ggplot(df_tabla, aes(x= Grade, y= Proportion, fill= Mutation)) +
+    geom_bar(stat="identity", position="dodge") +
+    labs(title=paste("Frecuencia de mutación de", g),
+         y="Proportion", x="Grade") +
+    theme_minimal() -> graphic
+  
+  print(graphic)
+}
+```
+
+Los gráficos muestran patrones que concuerdan con lo descrito anteriormente. En concreto, los genes IDH1, TP53 y ATRX presentan una mayor proporción de mutaciones en los gliomas de bajo grado (LGG) en comparación con el glioblastoma (GBM), siendo esta diferencia especialmente pronunciada en el caso del IDH1.
+
+Sin embargo, genes como  PTEN y el EGFR muestran una mayor tasa de mutación en el GBM que en el LGG, que suguiere una asociación con tumores más agrsivos.
+
+### 3.4.2 Edad vs grado
+```{r}
+ggplot(train_data, aes(x = factor(Grade, labels = c("LGG","GBM")), y = Age_at_diagnosis)) + 
+  geom_boxplot()+
+  labs(x= "Grade", y = "Age_at_diagnosis", title = "Edad según el grado tumoral")
+```
+
+Se observa una clara diferencia en la edad, los pacientes con GBM son, en promedio, considerablemente mayores que los de LGG. Los pacientes con LGG aparecen en edades medias, mientras que GBM se concentra en edades más avanzadas, indicando que la edad podría ser un factor importante relacionado con el grado tumoral.
+
+También podemos observar valores atípicos fuera del rango intercuartílico (38.30–62.52), coherentes con el resumen estadístico anterior (mín 14.42, máx 87), como casos poco frecuentes de pacientes jóvenes en GBM o mayores en LGG.
+
+### 3.4.3 Sexo vs grado
+```{r}
+ggplot(train_data, aes(x = factor(Gender, labels = c("Male","Female")),fill = factor(Grade, labels = c("LGG","GBM")))) +
+  geom_bar(position = "fill") +
+  labs(x = "Gender", y = "Proportion", fill = "Grade", title = "Distribución del sexo según grado tumoral")
+```
+
+La proporción de los tumores LGG y GBM es bastante similar entre hombres y mujeres, con una ligera mayor presencia de LGG en ambos grupos. En general no se observan diferencias relevantes, lo que sugiere que el sexo no está fuertemente asociado con el grado tumoral en estos datos.
+
+
+### 3.4.5 Edad + IDH1
+```{r}
+ggplot(train_data, aes(x = factor(IDH1, labels = c("Not mutated","Mutated")), y = Age_at_diagnosis)) +
+  geom_boxplot() +
+  labs(x = "IDH1", y = "Age_at_diagnosis", title = "Edad según estado mutacional de IDH1")
+```
+
+La gráfica muestra la edad al diagnóstico según el estado mutacional de IDH1. Los pacientes con mutación presentan una mediana de edad más temprana (entre 38–40 años) en comparación con los no mutados (entre 58–60 años). La dispersión indica que la mayoría de los mutados se concentra entre los 32 y 48 años, mientras que los no mutados se sitúan entre 50 y 68 años. 
+
+También podemos observar algunos valores atípicos donde muestran pacientes jóvenes no mutados cerca de los 20 y 25 años. 
